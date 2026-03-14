@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LocationCall — Site Terminal</title>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+:root{
+  --bg:#07111f;--sur:#0c1a2e;--card:#101f36;--bdr:#1a2e4a;
+  --acc:#00d4ff;--grn:#00e676;--red:#ff3d57;--ora:#ffab40;
+  --txt:#ccddf0;--mut:#3d5a7a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);
+  min-height:100vh;display:flex;flex-direction:column;}
+body::before{content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(0,212,255,.025) 39px,rgba(0,212,255,.025) 40px),
+             repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,212,255,.025) 39px,rgba(0,212,255,.025) 40px);
+  pointer-events:none;z-index:0;}
+
+header{position:sticky;top:0;z-index:50;background:rgba(7,17,31,.97);
+  border-bottom:1px solid var(--bdr);padding:0 24px;height:52px;
+  display:flex;align-items:center;justify-content:space-between;}
+.logo{font-size:17px;font-weight:800;color:white;}.logo b{color:var(--acc);}
+.hbadges{display:flex;align-items:center;gap:8px;}
+.hbadge{font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid;}
+.hb-off{color:var(--mut);border-color:var(--bdr);}
+.hb-on{color:var(--grn);border-color:rgba(0,230,118,.3);background:rgba(0,230,118,.07);}
+#hclock{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mut);}
+
+/* SCREENS */
+.scr{position:relative;z-index:1;flex:1;display:none;align-items:center;justify-content:center;padding:32px 16px;}
+.scr.on{display:flex;}
+
+/* SELECT SCREEN */
+.selbox{background:var(--sur);border:1px solid var(--bdr);border-radius:18px;padding:32px;width:100%;max-width:420px;}
+.selbox h1{font-size:20px;font-weight:800;color:white;margin-bottom:8px;}
+.selbox p{font-size:13px;color:var(--mut);margin-bottom:24px;line-height:1.6;}
+.flabel{font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--mut);margin-bottom:7px;display:block;}
+.fsel{width:100%;background:var(--card);border:1px solid var(--bdr);color:var(--txt);
+  font-family:'JetBrains Mono',monospace;font-size:14px;padding:11px 14px;border-radius:9px;
+  outline:none;cursor:pointer;margin-bottom:22px;transition:border .18s;}
+.fsel:focus{border-color:var(--acc);}
+.fsel option{background:var(--card);}
+.btn-go{width:100%;padding:14px;border:none;border-radius:11px;
+  background:linear-gradient(135deg,#00d4ff,#006aff);color:#000;
+  font-family:'Syne',sans-serif;font-size:16px;font-weight:800;cursor:pointer;transition:all .2s;}
+.btn-go:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,212,255,.35);}
+.btn-go:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.smsg{text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;margin-top:12px;min-height:18px;}
+.sm-ok{color:var(--grn);}.sm-err{color:var(--red);}.sm-info{color:var(--ora);}
+
+/* TERMINAL SCREEN */
+#termScr{flex-direction:column;}
+.termbox{background:var(--sur);border:1px solid var(--bdr);border-radius:18px;
+  padding:40px 32px;width:100%;max-width:420px;text-align:center;}
+.t-icon{font-size:56px;margin-bottom:14px;}
+.t-name{font-size:24px;font-weight:800;color:white;margin-bottom:6px;}
+.t-pid{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--acc);
+  background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.2);
+  border-radius:6px;padding:5px 14px;display:inline-block;margin-bottom:24px;}
+.t-state{font-size:22px;font-weight:800;margin-bottom:8px;}
+.t-sub{font-size:13px;color:var(--mut);margin-bottom:24px;line-height:1.6;}
+.t-timer{font-family:'JetBrains Mono',monospace;font-size:48px;font-weight:700;
+  color:var(--grn);display:none;margin-bottom:16px;}
+.t-timer.on{display:block;}
+
+/* waveform */
+.wave{display:none;justify-content:center;align-items:center;gap:4px;height:40px;margin-bottom:16px;}
+.wave.on{display:flex;}
+.wb{width:5px;border-radius:2px;background:var(--acc);animation:wv .65s ease-in-out infinite;}
+.wb:nth-child(1){animation-delay:0s}.wb:nth-child(2){animation-delay:.07s}
+.wb:nth-child(3){animation-delay:.14s}.wb:nth-child(4){animation-delay:.21s}
+.wb:nth-child(5){animation-delay:.28s}.wb:nth-child(6){animation-delay:.21s}
+.wb:nth-child(7){animation-delay:.14s}.wb:nth-child(8){animation-delay:.07s}
+@keyframes wv{0%,100%{height:4px;opacity:.3}50%{height:34px;opacity:1}}
+.meter{display:none;gap:2px;align-items:flex-end;height:24px;margin-bottom:16px;justify-content:center;}
+.meter.on{display:flex;}
+.mb{width:7px;border-radius:2px;background:var(--grn);min-height:2px;transition:height .06s;}
+
+.t-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+.tbtn{padding:13px 24px;border:none;border-radius:10px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .18s;}
+.tb-ans{background:linear-gradient(135deg,#00e676,#00a844);color:#000;animation:gp 1s infinite;}
+@keyframes gp{0%,100%{box-shadow:0 0 8px rgba(0,230,118,.3)}50%{box-shadow:0 0 24px rgba(0,230,118,.7)}}
+.tb-dec{background:rgba(255,61,87,.1);color:var(--red);border:1px solid rgba(255,61,87,.3);}
+.tb-hup{background:linear-gradient(135deg,#ff3d57,#b71c2c);color:white;}
+.tb-mut{background:var(--card);border:1px solid var(--bdr);color:var(--txt);}
+.tb-mut.muted{background:rgba(255,171,64,.12);border-color:var(--ora);color:var(--ora);}
+
+/* ring animation on whole box */
+.termbox.ringing{animation:ringpulse 1s infinite;}
+@keyframes ringpulse{0%,100%{border-color:var(--bdr)}50%{border-color:var(--acc);box-shadow:0 0 30px rgba(0,212,255,.2)}}
+
+.toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);
+  background:var(--sur);border:1px solid var(--acc);color:var(--txt);
+  padding:8px 18px;border-radius:30px;font-size:12px;font-weight:600;
+  z-index:300;pointer-events:none;opacity:0;transition:opacity .25s;white-space:nowrap;}
+.toast.on{opacity:1;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Location<b>Call</b> — <span style="font-size:13px;font-weight:400;color:var(--mut)">Site Terminal</span></div>
+  <div class="hbadges">
+    <span class="hbadge hb-off" id="connBadge">● OFFLINE</span>
+    <span id="hclock">--:--:--</span>
+  </div>
+</header>
+
+<!-- SELECT SITE -->
+<div class="scr on" id="selScr">
+  <div class="selbox">
+    <h1>Site Registration</h1>
+    <p>Select your site. You will be registered instantly — the operator dashboard will show you as <b style="color:var(--grn)">LIVE</b> and can call you with one click.</p>
+    <label class="flabel">Select your site</label>
+    <select class="fsel" id="siteSelect"></select>
+    <button class="btn-go" id="btnGo" onclick="register()">Register &amp; Go Live</button>
+    <div class="smsg" id="smsg"></div>
+  </div>
+</div>
+
+<!-- TERMINAL -->
+<div class="scr" id="termScr">
+  <div class="termbox" id="termbox">
+    <div class="t-icon" id="tIcon">📍</div>
+    <div class="t-name" id="tName">Site</div>
+    <div class="t-pid" id="tPid">—</div>
+    <div class="t-state" id="tState" style="color:var(--mut)">⏳ Waiting for call</div>
+    <div class="t-sub" id="tSub">You are live. Operator can call you anytime.</div>
+    <div class="t-timer" id="tTimer">00:00</div>
+    <div class="wave" id="tWave">
+      <div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div>
+      <div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div>
+    </div>
+    <div class="meter" id="tMeter">
+      <div class="mb" id="sm1"></div><div class="mb" id="sm2"></div>
+      <div class="mb" id="sm3"></div><div class="mb" id="sm4"></div>
+      <div class="mb" id="sm5"></div><div class="mb" id="sm6"></div>
+      <div class="mb" id="sm7"></div><div class="mb" id="sm8"></div>
+    </div>
+    <div class="t-btns" id="tBtns"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<audio id="remAudio" autoplay playsinline></audio>
+
+<script>
+const ICONS=['🏭','🏗️','🏢','🔧','⚡','🌊','🛢️','🔩','🏪','🏬'];
+const ZONES=['North','South','East','West','Central'];
+const SITES=Array.from({length:100},(_,i)=>{
+  const n=String(i+1).padStart(3,'0');
+  return {siteId:`site-${n}`,name:`Site ${n}`,zone:ZONES[Math.floor(i/20)],icon:ICONS[i%ICONS.length]};
+});
+
+// Populate dropdown
+const sel=document.getElementById('siteSelect');
+SITES.forEach(s=>{
+  const o=document.createElement('option');
+  o.value=s.siteId; o.textContent=`${s.icon}  ${s.name}  (${s.zone})`;
+  sel.appendChild(o);
+});
+
+let peer=null, socket=null, mySite=null;
+let activeCall=null, localStream=null, isMuted=false;
+let timerInt=null, callStart=null, audioCtx=null, analyser=null, meterInt=null;
+let pendingCall=null;
+
+function register(){
+  const siteId=document.getElementById('siteSelect').value;
+  mySite=SITES.find(s=>s.siteId===siteId);
+  document.getElementById('btnGo').disabled=true;
+  setMsg('Connecting to server...','sm-info');
+
+  socket=io();
+  socket.on('connect',()=>{
+    setMsg('Server connected. Starting peer...','sm-info');
+    initPeer();
+  });
+  socket.on('disconnect',()=>{ setMsg('Server disconnected','sm-err'); });
+  socket.on('connect_error',()=>{ setMsg('Cannot reach server','sm-err'); document.getElementById('btnGo').disabled=false; });
+}
+
+function initPeer(){
+  const host=window.location.hostname;
+  const port=window.location.port||3000;
+
+  peer=new Peer({host,port,path:'/peerjs',secure:false,debug:0,
+    config:{iceServers:[
+      {urls:'stun:stun.l.google.com:19302'},
+      {urls:'stun:stun1.l.google.com:19302'},
+      {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
+      {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'},
+      {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
+    ]}
+  });
+
+  peer.on('open',peerId=>{
+    setMsg(`Registered as ${peerId}`,'sm-ok');
+    // Tell server: I am live
+    socket.emit('site:register',{
+      siteId:  mySite.siteId,
+      name:    mySite.name,
+      peerId,
+      icon:    mySite.icon,
+      zone:    mySite.zone
+    });
+    showTerminal(peerId);
+  });
+
+  peer.on('call', onIncoming);
+  peer.on('error', e=>{ setMsg(`Peer error: ${e.type}`,'sm-err'); document.getElementById('btnGo').disabled=false; });
+  peer.on('disconnected',()=>peer.reconnect());
+}
+
+function showTerminal(peerId){
+  document.getElementById('selScr').classList.remove('on');
+  document.getElementById('termScr').classList.add('on');
+  document.getElementById('tIcon').textContent=mySite.icon;
+  document.getElementById('tName').textContent=mySite.name;
+  document.getElementById('tPid').textContent=`ID: ${peerId}`;
+  document.getElementById('connBadge').textContent='● LIVE';
+  document.getElementById('connBadge').className='hbadge hb-on';
+  setTermState('waiting');
+}
+
+function setTermState(state, who=''){
+  const st=document.getElementById('tState');
+  const sb=document.getElementById('tSub');
+  const btns=document.getElementById('tBtns');
+  const box=document.getElementById('termbox');
+  document.getElementById('tWave').classList.remove('on');
+  document.getElementById('tMeter').classList.remove('on');
+  document.getElementById('tTimer').style.display='none';
+  box.classList.remove('ringing');
+
+  if(state==='waiting'){
+    st.style.color='var(--mut)'; st.textContent='⏳ Waiting for call';
+    sb.textContent='You are live. Operator will call you from the dashboard.';
+    btns.innerHTML='';
+  } else if(state==='ringing'){
+    st.style.color='var(--acc)'; st.textContent='📞 Incoming call!';
+    sb.textContent=`From: ${who}`;
+    box.classList.add('ringing');
+    btns.innerHTML=`
+      <button class="tbtn tb-ans" onclick="answerCall()">✅ Answer</button>
+      <button class="tbtn tb-dec" onclick="declineCall()">✕ Decline</button>`;
+  } else if(state==='active'){
+    st.style.color='var(--grn)'; st.textContent='🔊 In Call';
+    sb.textContent=`Connected with: ${who}`;
+    document.getElementById('tWave').classList.add('on');
+    document.getElementById('tMeter').classList.add('on');
+    document.getElementById('tTimer').style.display='block';
+    btns.innerHTML=`
+      <button class="tbtn tb-mut" id="mutBtn" onclick="toggleMute()">🎙 Mute</button>
+      <button class="tbtn tb-hup" onclick="hangUp()">📵 End Call</button>`;
+  }
+}
+
+// ── INCOMING ──
+function onIncoming(call){
+  if(activeCall){ call.close(); return; }
+  pendingCall=call;
+  const who=call.metadata?.name||call.peer;
+  setTermState('ringing', who);
+}
+
+async function answerCall(){
+  if(!pendingCall) return;
+  const call=pendingCall; pendingCall=null;
+  const who=call.metadata?.name||call.peer;
+  try{ localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
+  catch(e){ toast('⚠️ Allow microphone access'); call.close(); setTermState('waiting'); return; }
+  call.answer(localStream); activeCall=call;
+  call.on('stream',s=>{ document.getElementById('remAudio').srcObject=s; setTermState('active',who); startTimer(); setupMeter(); });
+  call.on('close',()=>cleanCall());
+  call.on('error',()=>cleanCall());
+}
+
+function declineCall(){
+  if(pendingCall){ pendingCall.close(); pendingCall=null; }
+  setTermState('waiting');
+}
+
+function hangUp(){ if(activeCall) activeCall.close(); cleanCall(); }
+
+function toggleMute(){
+  if(!localStream) return;
+  isMuted=!isMuted;
+  localStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
+  const b=document.getElementById('mutBtn');
+  b.classList.toggle('muted',isMuted);
+  b.textContent=isMuted?'🔇 Unmute':'🎙 Mute';
+}
+
+function cleanCall(){
+  if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
+  clearInterval(timerInt); timerInt=null;
+  clearInterval(meterInt); meterInt=null;
+  if(audioCtx){try{audioCtx.close();}catch(e){} audioCtx=null;}
+  activeCall=null; isMuted=false;
+  document.getElementById('remAudio').srcObject=null;
+  document.getElementById('tTimer').textContent='00:00';
+  setTermState('waiting');
+}
+
+// ── TIMER / METER ──
+function startTimer(){
+  callStart=Date.now();
+  const el=document.getElementById('tTimer');
+  el.style.display='block';
+  timerInt=setInterval(()=>{
+    const s=Math.floor((Date.now()-callStart)/1000);
+    el.textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  },1000);
+}
+
+function setupMeter(){
+  try{
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    analyser=audioCtx.createAnalyser(); analyser.fftSize=32;
+    audioCtx.createMediaStreamSource(localStream).connect(analyser);
+    const bars=[1,2,3,4,5,6,7,8].map(i=>document.getElementById('sm'+i));
+    const data=new Uint8Array(analyser.frequencyBinCount);
+    meterInt=setInterval(()=>{
+      analyser.getByteFrequencyData(data);
+      bars.forEach((b,i)=>{if(!b)return;b.style.height=Math.max(2,(data[i]/255)*22)+'px';});
+    },60);
+  }catch(e){}
+}
+
+// ── UTILS ──
+function setMsg(m,c){ const e=document.getElementById('smsg'); e.textContent=m; e.className='smsg'+(c?' '+c:''); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),2500); }
+setInterval(()=>{ document.getElementById('hclock').textContent=new Date().toLocaleTimeString('en-IN',{hour12:false}); },1000);
+</script>
+</body>
+</html>

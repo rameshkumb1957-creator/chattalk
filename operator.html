@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LocationCall — Operator</title>
+<!-- Socket.io from server -->
+<script src="/socket.io/socket.io.js"></script>
+<!-- PeerJS -->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+:root{
+  --bg:#07111f;--sur:#0c1a2e;--card:#101f36;--bdr:#1a2e4a;
+  --acc:#00d4ff;--grn:#00e676;--red:#ff3d57;--ora:#ffab40;
+  --txt:#ccddf0;--mut:#3d5a7a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column;}
+body::before{content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(0,212,255,.025) 39px,rgba(0,212,255,.025) 40px),
+             repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,212,255,.025) 39px,rgba(0,212,255,.025) 40px);
+  pointer-events:none;z-index:0;}
+
+header{position:sticky;top:0;z-index:50;background:rgba(7,17,31,.97);
+  border-bottom:1px solid var(--bdr);padding:0 24px;height:52px;
+  display:flex;align-items:center;justify-content:space-between;}
+.logo{font-size:17px;font-weight:800;color:white;}.logo b{color:var(--acc);}
+.hbadges{display:flex;align-items:center;gap:8px;}
+.hbadge{font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid;}
+.hb-off{color:var(--mut);border-color:var(--bdr);}
+.hb-on{color:var(--grn);border-color:rgba(0,230,118,.3);background:rgba(0,230,118,.07);}
+#hclock{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mut);}
+
+/* CONNECTING SCREEN */
+#connectScr{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;padding:32px 16px;}
+.cbox{background:var(--sur);border:1px solid var(--bdr);border-radius:18px;padding:32px;width:100%;max-width:400px;text-align:center;}
+.cbox h1{font-size:20px;font-weight:800;color:white;margin-bottom:8px;}
+.cbox p{font-size:13px;color:var(--mut);margin-bottom:24px;line-height:1.6;}
+.spinner{width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--acc);
+  border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.cmsg{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ora);}
+.cmsg.ok{color:var(--grn);}.cmsg.err{color:var(--red);}
+
+/* DASHBOARD */
+#dashboard{position:relative;z-index:1;flex:1;display:none;flex-direction:column;}
+#dashboard.on{display:flex;}
+.layout{display:grid;grid-template-columns:300px 1fr;flex:1;min-height:0;}
+
+/* SIDEBAR */
+.sidebar{background:var(--sur);border-right:1px solid var(--bdr);
+  display:flex;flex-direction:column;height:calc(100vh - 52px);overflow-y:auto;}
+.sb-sec{padding:16px;border-bottom:1px solid var(--bdr);}
+.sb-sec.grow{flex:1;overflow-y:auto;border-bottom:none;}
+.sbt{font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--mut);margin-bottom:10px;}
+
+/* CALL CARD */
+.cc{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:14px;}
+.cc-who{font-size:15px;font-weight:800;color:white;margin-bottom:3px;}
+.cc-sub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mut);margin-bottom:10px;}
+.cc-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:5px;margin-bottom:8px;border:1px solid;}
+.cb-idle{color:var(--mut);border-color:var(--bdr);}
+.cb-ring{color:var(--ora);border-color:rgba(255,171,64,.35);background:rgba(255,171,64,.08);animation:blk 1s infinite;}
+.cb-act{color:var(--grn);border-color:rgba(0,230,118,.35);background:rgba(0,230,118,.08);}
+@keyframes blk{0%,100%{opacity:1}50%{opacity:.35}}
+.cc-timer{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;color:var(--grn);
+  display:none;text-align:center;margin:4px 0;}
+.cc-timer.on{display:block;}
+.wave{display:none;align-items:center;justify-content:center;gap:3px;height:28px;margin:4px 0;}
+.wave.on{display:flex;}
+.wb{width:4px;border-radius:2px;background:var(--acc);animation:wv .65s ease-in-out infinite;}
+.wb:nth-child(1){animation-delay:0s}.wb:nth-child(2){animation-delay:.07s}
+.wb:nth-child(3){animation-delay:.14s}.wb:nth-child(4){animation-delay:.21s}
+.wb:nth-child(5){animation-delay:.28s}.wb:nth-child(6){animation-delay:.21s}
+.wb:nth-child(7){animation-delay:.14s}.wb:nth-child(8){animation-delay:.07s}
+@keyframes wv{0%,100%{height:3px;opacity:.3}50%{height:26px;opacity:1}}
+.meter{display:none;gap:2px;align-items:flex-end;height:18px;margin:4px 0;}
+.meter.on{display:flex;}
+.mb{width:7px;border-radius:2px;background:var(--grn);min-height:2px;transition:height .06s;}
+.vol{display:none;align-items:center;gap:7px;font-size:11px;color:var(--mut);margin:3px 0;}
+.vol.on{display:flex;}
+.vbg{flex:1;height:3px;background:var(--bdr);border-radius:2px;overflow:hidden;}
+.vfl{height:100%;background:var(--grn);border-radius:2px;width:0;transition:width .06s;}
+.cc-btns{display:flex;gap:7px;margin-top:8px;}
+.btn-hup{flex:1;padding:10px;border:none;border-radius:8px;font-family:'Syne',sans-serif;
+  font-size:13px;font-weight:700;cursor:pointer;
+  background:linear-gradient(135deg,#ff3d57,#b71c2c);color:white;transition:all .18s;}
+.btn-hup:disabled{opacity:.3;cursor:not-allowed;}
+.btn-mut{padding:10px 13px;border-radius:8px;border:1px solid var(--bdr);
+  background:var(--card);color:var(--txt);font-size:14px;cursor:pointer;transition:all .15s;}
+.btn-mut:disabled{opacity:.3;cursor:not-allowed;}
+.btn-mut.muted{background:rgba(255,171,64,.12);border-color:var(--ora);color:var(--ora);}
+
+/* LOG */
+.log-list{display:flex;flex-direction:column;}
+.log-item{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;
+  font-size:11px;color:var(--mut);padding:4px 0;border-bottom:1px solid rgba(26,46,74,.5);}
+.ld{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.lt{color:var(--acc);min-width:44px;}
+
+/* GRID */
+.grid-area{padding:20px;overflow-y:auto;height:calc(100vh - 52px);}
+.ga-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+.ga-title{font-size:15px;font-weight:800;color:white;}
+.live-pill{font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:var(--grn);background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.25);padding:3px 10px;border-radius:20px;}
+.ftabs{display:flex;gap:6px;}
+.ftab{font-size:11px;font-weight:700;padding:4px 11px;border-radius:20px;cursor:pointer;
+  border:1px solid var(--bdr);color:var(--mut);transition:all .15s;}
+.ftab.on{background:var(--acc);color:#000;border-color:var(--acc);}
+.ftab:hover:not(.on){border-color:var(--acc);color:var(--acc);}
+.site-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;}
+
+/* SITE CARD */
+.sc{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:15px;
+  position:relative;overflow:hidden;transition:border .2s,box-shadow .2s;}
+.sc.live{border-color:rgba(0,230,118,.5);}
+.sc.oncall{border-color:var(--grn);box-shadow:0 0 18px rgba(0,230,118,.2);}
+.sc.dim{opacity:.35;}
+.sc-pip{position:absolute;top:11px;right:11px;width:8px;height:8px;border-radius:50%;
+  background:var(--grn);animation:pp 1.4s infinite;}
+@keyframes pp{0%,100%{opacity:1}50%{opacity:.15}}
+.sc-tag{position:absolute;top:8px;right:8px;font-size:9px;font-weight:800;letter-spacing:.8px;
+  color:#000;background:var(--grn);padding:2px 7px;border-radius:4px;}
+.sc-icon{font-size:22px;margin-bottom:8px;}
+.sc-name{font-size:13px;font-weight:800;color:white;margin-bottom:2px;}
+.sc-zone{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--mut);margin-bottom:8px;}
+.sc-st{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;margin-bottom:10px;}
+.sd{width:7px;height:7px;border-radius:50%;}
+.sd-live{background:var(--grn);animation:pp 2s infinite;}
+.sd-off{background:var(--mut);}
+.btn-call{width:100%;padding:10px;border:none;border-radius:8px;font-family:'Syne',sans-serif;
+  font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;gap:6px;transition:all .18s;}
+.btn-call.live-btn{background:linear-gradient(135deg,#00d4ff,#006aff);color:#000;}
+.btn-call.live-btn:hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(0,212,255,.4);}
+.btn-call.live-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-call.off-btn{background:var(--bdr);color:var(--mut);cursor:not-allowed;}
+
+/* INCOMING */
+.inc-pop{position:fixed;bottom:24px;right:24px;background:var(--sur);
+  border:2px solid var(--acc);border-radius:16px;padding:18px 20px;z-index:200;
+  display:none;min-width:250px;
+  box-shadow:0 0 40px rgba(0,212,255,.15),0 20px 60px rgba(0,0,0,.6);}
+.inc-pop.on{display:block;animation:sup .28s ease;}
+@keyframes sup{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+.inc-lbl{font-size:10px;letter-spacing:1.8px;text-transform:uppercase;color:var(--acc);font-weight:700;margin-bottom:4px;}
+.inc-who{font-size:16px;font-weight:800;color:white;margin-bottom:12px;}
+.inc-btns{display:flex;gap:8px;}
+.ib-a{flex:1;padding:10px;border:none;border-radius:8px;font-family:'Syne',sans-serif;
+  font-size:13px;font-weight:700;cursor:pointer;
+  background:linear-gradient(135deg,#00e676,#00a844);color:#000;animation:gp 1s infinite;}
+@keyframes gp{0%,100%{box-shadow:0 0 8px rgba(0,230,118,.3)}50%{box-shadow:0 0 22px rgba(0,230,118,.7)}}
+.ib-d{flex:1;padding:10px;border:1px solid rgba(255,61,87,.3);border-radius:8px;
+  font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;
+  background:rgba(255,61,87,.1);color:var(--red);}
+
+.toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);
+  background:var(--sur);border:1px solid var(--acc);color:var(--txt);
+  padding:8px 18px;border-radius:30px;font-size:12px;font-weight:600;
+  z-index:300;pointer-events:none;opacity:0;transition:opacity .25s;white-space:nowrap;}
+.toast.on{opacity:1;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Location<b>Call</b> — <span style="font-size:13px;font-weight:400;color:var(--mut)">Operator</span></div>
+  <div class="hbadges">
+    <span class="hbadge hb-off" id="connBadge">● OFFLINE</span>
+    <span id="hclock">--:--:--</span>
+  </div>
+</header>
+
+<!-- CONNECTING -->
+<div id="connectScr">
+  <div class="cbox">
+    <div class="spinner"></div>
+    <h1>Operator Dashboard</h1>
+    <p>Connecting to server...<br>Live sites will appear automatically.</p>
+    <div class="cmsg" id="cmsg">Connecting...</div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="layout">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sb-sec">
+        <div class="sbt">Active Call</div>
+        <div class="cc">
+          <div class="cc-who" id="ccWho">No active call</div>
+          <div class="cc-sub" id="ccSub">Click 📞 on any live site</div>
+          <div class="cc-badge cb-idle" id="ccBadge">○ IDLE</div>
+          <div class="cc-timer" id="ccTimer">00:00</div>
+          <div class="wave" id="ccWave">
+            <div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div>
+            <div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div>
+          </div>
+          <div class="meter" id="ccMeter">
+            <div class="mb" id="m1"></div><div class="mb" id="m2"></div>
+            <div class="mb" id="m3"></div><div class="mb" id="m4"></div>
+            <div class="mb" id="m5"></div><div class="mb" id="m6"></div>
+            <div class="mb" id="m7"></div><div class="mb" id="m8"></div>
+          </div>
+          <div class="vol" id="ccVol">
+            <span>🎙</span>
+            <div class="vbg"><div class="vfl" id="vfl"></div></div>
+            <span id="vpt">0%</span>
+          </div>
+          <div class="cc-btns">
+            <button class="btn-hup" id="btnHup" onclick="hangUp()" disabled>📵 End</button>
+            <button class="btn-mut" id="btnMut" onclick="toggleMute()" disabled>🎙</button>
+          </div>
+        </div>
+      </div>
+      <div class="sb-sec grow">
+        <div class="sbt">Log</div>
+        <div class="log-list" id="logList"></div>
+      </div>
+    </div>
+
+    <!-- GRID -->
+    <div class="grid-area">
+      <div class="ga-top">
+        <div class="ga-title">Sites</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="live-pill" id="livePill">0 live</span>
+          <div class="ftabs">
+            <div class="ftab on" onclick="setFilt('all',this)">All</div>
+            <div class="ftab" onclick="setFilt('live',this)">Live</div>
+            <div class="ftab" onclick="setFilt('off',this)">Offline</div>
+          </div>
+        </div>
+      </div>
+      <div class="site-grid" id="siteGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- INCOMING -->
+<div class="inc-pop" id="incPop">
+  <div class="inc-lbl">📞 Incoming Call</div>
+  <div class="inc-who" id="incWho">—</div>
+  <div class="inc-btns">
+    <button class="ib-a" onclick="answerCall()">✅ Answer</button>
+    <button class="ib-d" onclick="declineCall()">✕ Decline</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<audio id="remAudio" autoplay playsinline></audio>
+
+<script>
+const ICONS=['🏭','🏗️','🏢','🔧','⚡','🌊','🛢️','🔩','🏪','🏬'];
+const ZONES=['North','South','East','West','Central'];
+// Build full 100-site list (same as server knows)
+const ALL_SITES=Array.from({length:100},(_,i)=>{
+  const n=String(i+1).padStart(3,'0');
+  return {siteId:`site-${n}`,name:`Site ${n}`,zone:ZONES[Math.floor(i/20)],icon:ICONS[i%ICONS.length],peerId:null,live:false};
+});
+
+let peer=null, socket=null;
+let activeCall=null, localStream=null, isMuted=false;
+let timerInt=null, callStart=null, audioCtx=null, analyser=null, meterInt=null;
+let pendingCall=null, filt='all';
+
+// ── INIT ──
+window.onload=()=>{
+  socket=io();
+  socket.on('connect',()=>{
+    setMsg('Connected to server. Joining as Operator...','');
+    log('Server connected','#00e676');
+    // Ask for current live sites
+    socket.emit('registry:get');
+    initPeer();
+  });
+  socket.on('disconnect',()=>{ setMsg('Server disconnected. Reconnecting...',''); });
+  socket.on('registry:update', updateRegistry);
+  socket.on('connect_error',()=>setMsg('Cannot reach server. Is it running?','err'));
+};
+
+function updateRegistry(liveSites){
+  // Merge live site data into ALL_SITES
+  ALL_SITES.forEach(s=>{
+    const entry=liveSites[s.siteId];
+    if(entry){ s.peerId=entry.peerId; s.live=true; }
+    else { s.peerId=null; s.live=false; }
+  });
+  renderGrid();
+  const n=ALL_SITES.filter(s=>s.live).length;
+  log(`Registry updated — ${n} site(s) live`,'#00d4ff');
+}
+
+function initPeer(){
+  // Connect to OUR PeerJS server (same host)
+  const host=window.location.hostname;
+  const port=window.location.port||3000;
+  peer=new Peer({host,port,path:'/peerjs',secure:false,debug:0,
+    config:{iceServers:[
+      {urls:'stun:stun.l.google.com:19302'},
+      {urls:'stun:stun1.l.google.com:19302'},
+      // Free TURN from Open Relay (works cross-browser, cross-network)
+      {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
+      {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'},
+      {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
+    ]}
+  });
+
+  peer.on('open',id=>{
+    setMsg(`Ready. Peer ID: ${id}`,'ok');
+    document.getElementById('connBadge').textContent='● ONLINE';
+    document.getElementById('connBadge').className='hbadge hb-on';
+    document.getElementById('connectScr').style.display='none';
+    document.getElementById('dashboard').classList.add('on');
+    renderGrid();
+    log(`Operator ready`,'#00e676');
+  });
+
+  peer.on('call', onIncoming);
+  peer.on('error', e=>{ log(`Peer error: ${e.type}`,'#ff3d57'); setMsg(`PeerJS: ${e.type}`,'err'); });
+  peer.on('disconnected',()=>peer.reconnect());
+}
+
+// ── CALL A SITE ──
+async function callSite(siteId){
+  if(activeCall){ toast('End current call first'); return; }
+  const site=ALL_SITES.find(s=>s.siteId===siteId);
+  if(!site||!site.live||!site.peerId){ toast(`${site?.name||siteId} is not live`); return; }
+
+  try{ localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
+  catch(e){ toast('⚠️ Allow microphone access'); log('Mic denied','#ff3d57'); return; }
+
+  setCallUI('ring',site.name,'Calling...');
+  log(`Calling ${site.name}`,'#ffab40');
+
+  const call=peer.call(site.peerId,localStream,{metadata:{name:'Operator'}});
+  activeCall=call;
+
+  call.on('stream',s=>{
+    document.getElementById('remAudio').srcObject=s;
+    setCallUI('active',site.name,`Peer: ${site.peerId}`);
+    startTimer(); setupMeter();
+    log(`Connected: ${site.name}`,'#00e676');
+    renderGrid();
+  });
+  call.on('close',()=>{ cleanCall(); renderGrid(); log('Call ended','#888'); });
+  call.on('error',e=>{ cleanCall(); renderGrid(); log(`Call error: ${e.type}`,'#ff3d57'); });
+
+  setTimeout(()=>{
+    if(activeCall===call&&!document.getElementById('ccTimer').classList.contains('on')){
+      cleanCall(); renderGrid(); log('No answer (30s)','#888');
+    }
+  },30000);
+}
+
+// ── INCOMING ──
+function onIncoming(call){
+  if(activeCall){ call.close(); return; }
+  pendingCall=call;
+  const who=call.metadata?.name||call.peer;
+  document.getElementById('incWho').textContent=who;
+  document.getElementById('incPop').classList.add('on');
+  log(`Incoming: ${who}`,'#00d4ff');
+}
+async function answerCall(){
+  document.getElementById('incPop').classList.remove('on');
+  if(!pendingCall) return;
+  const call=pendingCall; pendingCall=null;
+  const who=call.metadata?.name||call.peer;
+  try{ localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
+  catch(e){ toast('⚠️ Mic access denied'); call.close(); return; }
+  call.answer(localStream); activeCall=call;
+  log(`Answered: ${who}`,'#00e676');
+  call.on('stream',s=>{ document.getElementById('remAudio').srcObject=s; setCallUI('active',who,call.peer); startTimer(); setupMeter(); renderGrid(); });
+  call.on('close',()=>{ cleanCall(); renderGrid(); log('Call ended','#888'); });
+  call.on('error',()=>{ cleanCall(); renderGrid(); });
+}
+function declineCall(){
+  document.getElementById('incPop').classList.remove('on');
+  if(pendingCall){ pendingCall.close(); pendingCall=null; }
+  log('Declined','#888');
+}
+
+// ── CALL CONTROLS ──
+function hangUp(){ if(activeCall) activeCall.close(); cleanCall(); renderGrid(); }
+function toggleMute(){
+  if(!localStream) return;
+  isMuted=!isMuted;
+  localStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
+  const b=document.getElementById('btnMut');
+  b.classList.toggle('muted',isMuted); b.textContent=isMuted?'🔇':'🎙';
+  log(isMuted?'Muted':'Unmuted','#ffab40');
+}
+
+function setCallUI(s,who,sub){
+  document.getElementById('ccWho').textContent=who;
+  document.getElementById('ccSub').textContent=sub;
+  const b=document.getElementById('ccBadge');
+  if(s==='ring'){b.className='cc-badge cb-ring';b.textContent='◌ CALLING';}
+  else if(s==='active'){
+    b.className='cc-badge cb-act';b.textContent='● CONNECTED';
+    document.getElementById('btnHup').disabled=false;
+    document.getElementById('btnMut').disabled=false;
+    document.getElementById('ccWave').classList.add('on');
+    document.getElementById('ccMeter').classList.add('on');
+    document.getElementById('ccVol').classList.add('on');
+  } else {
+    b.className='cc-badge cb-idle';b.textContent='○ IDLE';
+  }
+}
+
+function cleanCall(){
+  if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
+  clearInterval(timerInt); timerInt=null;
+  clearInterval(meterInt); meterInt=null;
+  if(audioCtx){try{audioCtx.close();}catch(e){} audioCtx=null;}
+  activeCall=null; isMuted=false;
+  document.getElementById('remAudio').srcObject=null;
+  document.getElementById('ccTimer').classList.remove('on');
+  document.getElementById('ccTimer').textContent='00:00';
+  ['ccWave','ccMeter','ccVol'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  document.getElementById('btnHup').disabled=true;
+  document.getElementById('btnMut').disabled=true;
+  document.getElementById('btnMut').classList.remove('muted');
+  document.getElementById('btnMut').textContent='🎙';
+  setCallUI('idle','No active call','Click 📞 on any live site');
+}
+
+// ── TIMER / METER ──
+function startTimer(){
+  callStart=Date.now();
+  const el=document.getElementById('ccTimer');
+  el.classList.add('on');
+  timerInt=setInterval(()=>{
+    const s=Math.floor((Date.now()-callStart)/1000);
+    el.textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  },1000);
+}
+function setupMeter(){
+  try{
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    analyser=audioCtx.createAnalyser(); analyser.fftSize=32;
+    audioCtx.createMediaStreamSource(localStream).connect(analyser);
+    const bars=[1,2,3,4,5,6,7,8].map(i=>document.getElementById('m'+i));
+    const data=new Uint8Array(analyser.frequencyBinCount);
+    meterInt=setInterval(()=>{
+      analyser.getByteFrequencyData(data);
+      let avg=0;
+      bars.forEach((b,i)=>{if(!b)return;const h=Math.max(2,(data[i]/255)*20);b.style.height=h+'px';avg+=h;});
+      const p=Math.round((avg/(20*8))*100);
+      document.getElementById('vfl').style.width=p+'%';
+      document.getElementById('vpt').textContent=p+'%';
+    },60);
+  }catch(e){}
+}
+
+// ── GRID ──
+function setFilt(f,el){ filt=f; document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('on')); el.classList.add('on'); renderGrid(); }
+function renderGrid(){
+  const g=document.getElementById('siteGrid');
+  let list=ALL_SITES;
+  if(filt==='live') list=ALL_SITES.filter(s=>s.live);
+  else if(filt==='off') list=ALL_SITES.filter(s=>!s.live);
+  const liveN=ALL_SITES.filter(s=>s.live).length;
+  document.getElementById('livePill').textContent=`${liveN} live`;
+  g.innerHTML='';
+  const callingWho=document.getElementById('ccWho').textContent;
+  list.forEach(site=>{
+    const calling=activeCall&&callingWho===site.name;
+    const d=document.createElement('div');
+    d.className=`sc${site.live?' live':''}${calling?' oncall':''}${!site.live?' dim':''}`;
+    d.innerHTML=`
+      ${site.live&&!calling?'<div class="sc-pip"></div>':''}
+      ${calling?'<div class="sc-tag">ON CALL</div>':''}
+      <div class="sc-icon">${site.icon}</div>
+      <div class="sc-name">${site.name}</div>
+      <div class="sc-zone">${site.zone}</div>
+      <div class="sc-st">
+        <div class="sd ${site.live?'sd-live':'sd-off'}"></div>
+        <span style="color:${site.live?'var(--grn)':'var(--mut)'}">${site.live?'LIVE':'OFFLINE'}</span>
+      </div>
+      <button class="btn-call ${site.live&&!calling?'live-btn':'off-btn'}"
+        onclick="callSite('${site.siteId}')" ${!site.live||calling?'disabled':''}>
+        📞 Call
+      </button>`;
+    g.appendChild(d);
+  });
+}
+
+// ── UTILS ──
+function setMsg(m,t){ const e=document.getElementById('cmsg'); e.textContent=m; e.className='cmsg'+(t?' '+t:''); }
+function log(msg,color='#3d5a7a'){
+  const el=document.getElementById('logList'); if(!el)return;
+  const t=new Date().toLocaleTimeString('en-IN',{hour12:false,hour:'2-digit',minute:'2-digit'});
+  const r=document.createElement('div'); r.className='log-item';
+  r.innerHTML=`<div class="ld" style="background:${color}"></div><span class="lt">${t}</span><span>${msg}</span>`;
+  el.prepend(r); while(el.children.length>15) el.removeChild(el.lastChild);
+}
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),2500); }
+setInterval(()=>{ document.getElementById('hclock').textContent=new Date().toLocaleTimeString('en-IN',{hour12:false}); },1000);
+</script>
+</body>
+</html>
